@@ -165,9 +165,9 @@ def ReadFileType (filename):
 
 def ConfigFile (name, confdir):
     try:
-        file = open (name, 'r')
+        file = open (confdir + name, 'r')
     except IOError:
-        croak ('Unable to open config file %s' % (name))
+        croak ('Unable to open config file %s' % (confdir + name))
     line = ReadConfigLine (file)
     while line:
         sline = line.split (None, 2)
