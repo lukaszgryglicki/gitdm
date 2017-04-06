@@ -3,6 +3,13 @@ which attempts to figure things out from the revision history in a git
 repository. 
 
 
+## This is a fork by lukaszgryglicki.
+I've marked various fiels with `LG:`
+This is a wip.
+It is supossed to be analysis tool for CNCF Kubernetes first, and then for 8
+other CNCF projects.
+
+
 INSTALLING GITDM
 
 gitdm is a python script and doesn't need to be proper installed like other
