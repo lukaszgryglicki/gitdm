@@ -36,7 +36,6 @@ AuthorSOBs = 1
 FileFilter = None
 CSVFile = None
 CSVPrefix = None
-AkpmOverLt = 0
 DumpDB = 0
 CFName = 'gitdm.config-cncf'
 DirName = ''
@@ -48,36 +47,33 @@ ReportUnknowns = False
 #
 # Options:
 #
-# -a		Andrew Morton's signoffs shadow Linus's
 # -b dir	Specify the base directory to fetch the configuration files
 # -c cfile	Specify a configuration file
 # -d		Output individual developer stats
 # -D		Output date statistics
 # -h hfile	HTML output to hfile
 # -l count	Maximum length for output lists
-# -n        Use numstats instead of generated patch from git log
+# -n            Use numstats instead of generated patch from git log
 # -o file	File for text output
-# -p prefix Prefix for CSV output
+# -p prefix     Prefix for CSV output
 # -r pattern	Restrict to files matching pattern
 # -s		Ignore author SOB lines
 # -u		Map unknown employers to '(Unknown)'
 # -U 		Dump unknown hackers in report
 # -x file.csv   Export raw statistics as CSV
-# -w        Aggregrate the raw statistics by weeks instead of months
+# -w            Aggregrate the raw statistics by weeks instead of months
 # -y            Aggregrate the raw statistics by years instead of months
 # -z		Dump out the hacker database at completion
 
 def ParseOpts ():
     global MapUnknown, DevReports
-    global DateStats, AuthorSOBs, FileFilter, AkpmOverLt, DumpDB
+    global DateStats, AuthorSOBs, FileFilter, DumpDB
     global CFName, CSVFile, CSVPrefix,DirName, Aggregate, Numstat
     global ReportByFileType, ReportUnknowns
 
-    opts, rest = getopt.getopt (sys.argv[1:], 'ab:dc:Dh:l:no:p:r:stUuwx:yz')
+    opts, rest = getopt.getopt (sys.argv[1:], 'b:dc:Dh:l:no:p:r:stUuwx:yz')
     for opt in opts:
-        if opt[0] == '-a':
-            AkpmOverLt = 1
-        elif opt[0] == '-b':
+        if opt[0] == '-b':
             DirName = opt[1]
         elif opt[0] == '-c':
             CFName = opt[1]
@@ -368,14 +364,6 @@ def is_svntag(logpatch):
 
     return False
 
-#
-# If this patch is signed off by both Andrew Morton and Linus Torvalds,
-# remove the (redundant) Linus signoff.
-#
-def TrimLTSOBs (p):
-    if AkpmOverLt == 1 and Linus in p.sobs and Akpm in p.sobs:
-        p.sobs.remove (Linus)
-
 
 #
 # Here starts the real program.
@@ -386,16 +374,6 @@ ParseOpts ()
 # Read the config files.
 #
 ConfigFile.ConfigFile (CFName, DirName)
-
-#
-# Let's pre-seed the database with a couple of hackers
-# we want to remember.
-#
-if AkpmOverLt == 1:
-    Linus = ('torvalds@linux-foundation.org',
-         LookupStoreHacker ('Linus Torvalds', 'torvalds@linux-foundation.org'))
-    Akpm = ('akpm@linux-foundation.org',
-        LookupStoreHacker ('Andrew Morton', 'akpm@linux-foundation.org'))
 
 TotalChanged = TotalAdded = TotalRemoved = 0
 
@@ -450,8 +428,6 @@ for logpatch in patches:
         AddDateLines (p.date, max (p.added, p.removed))
         empl = p.author.emailemployer (p.email, p.date)
         empl.AddCSet (p)
-        if AkpmOverLt:
-            TrimLTSOBs (p)
         for sobemail, sobber in p.sobs:
             empl = sobber.emailemployer (sobemail, p.date)
             empl.AddSOB()
