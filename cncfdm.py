@@ -18,6 +18,7 @@ import getopt, datetime
 import os, re, sys, rfc822, string
 import logparser
 from patterns import patterns
+import pdb
 
 Today = datetime.date.today()
 
@@ -115,6 +116,7 @@ def ParseOpts ():
 
 
 def LookupStoreHacker (name, email):
+    # pdb.set_trace() # LG: TODO: to see how hacker lookup looks like
     email = database.RemapEmail (email)
     h = database.LookupEmail (email)
     if h: # already there
@@ -191,6 +193,7 @@ def parse_numstat(line, file_filter):
         Receive a line of text, determine if fits a numstat line and
         parse the added and removed lines as well as the file type.
     """
+    # pdb.set_trace() # LG: TODO: to see how numstat lines are parsed
     m = patterns['numstat'].match (line)
     if m:
         filename = m.group (3)
@@ -217,7 +220,11 @@ def parse_numstat(line, file_filter):
 #
 # The core hack for grabbing the information about a changeset.
 #
+# LG: need to add statictics here: how many times each pattern was matched
+# Then stats per releases (Kubernetes: 1.0 --> 1.6)
 def grabpatch(logpatch):
+    # pdb.set_trace() # LG: TODO: to create statistic how many times each pattern was matched
+    # just to exclude invalid patterns (not suited for non openstack repo - kubernetes)
     m = patterns['commit'].match (logpatch[0])
     if not m:
         return None
@@ -317,6 +324,7 @@ def grabpatch(logpatch):
 			    p.addfiletype (filetype, added, removed)
 
     if '@' in p.author.name:
+        # pdb.set_trace() # LG: TODO: to check what is this about?
         GripeAboutAuthorName (p.author.name)
 
     return p
@@ -380,13 +388,14 @@ TotalChanged = TotalAdded = TotalRemoved = 0
 #
 # Snarf changesets.
 #
+# pdb.set_trace() # LG: to see data loaded from config
 print >> sys.stderr, 'Grabbing changesets...\r',
 
 patches = logparser.LogPatchSplitter(sys.stdin)
 printcount = CSCount = 0
 
 for logpatch in patches:
-    if (printcount % 50) == 0:
+    if (printcount % 10) == 0:
         print >> sys.stderr, 'Grabbing changesets...%d\r' % printcount,
     printcount += 1
 
@@ -398,6 +407,7 @@ for logpatch in patches:
     if is_svntag(logpatch):
         continue
 
+    # pdb.set_trace() # LG: TODO: to see difference between logpatch and `p`
     p = grabpatch(logpatch)
     if not p:
         break
@@ -408,14 +418,11 @@ for logpatch in patches:
         continue
 
     #
-    # skip over any OpenStack Jenkins automated commits
+    # skip over any k8s-bot
     #
-    if p.email == "jenkins@openstack.org":
-        continue
-    if p.email == "jenkins@review.openstack.org":
-        continue
-    if p.email == "openstack-infra@lists.openstack.org":
-        continue
+    # LG: TODO: here we need to skip k8s bot(s)
+    #if p.email == "jenkins@openstack.org":
+    #    continue
 
     #
     # Record some global information - but only if this patch had
@@ -432,6 +439,7 @@ for logpatch in patches:
             empl = sobber.emailemployer (sobemail, p.date)
             empl.AddSOB()
 
+    # pdb.set_trace() # LG: TODO:  to see SOBs, merge, reviews etc data
     if not p.merge:
         p.author.addpatch (p)
         for sobemail, sob in p.sobs:
@@ -450,6 +458,9 @@ print >> sys.stderr, 'Grabbing changesets...done       '
 if DumpDB:
     database.DumpDB ()
 database.MixVirtuals ()
+
+# pdb.set_trace() # LG: TODO: now let's see what we have in `database`
+# and figure out all stuff
 
 #
 # Say something

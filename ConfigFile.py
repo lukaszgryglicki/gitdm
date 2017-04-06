@@ -12,6 +12,7 @@
 #
 import sys, re, datetime, os.path
 import database
+import pdb
 
 #
 # Read a line and strip out junk.
@@ -31,6 +32,7 @@ def ReadConfigLine (file):
 #
 def croak (message):
     sys.stderr.write (message + '\n')
+    pdb.set_trace() # LG: let's catch this
     sys.exit (1)
 
 #
