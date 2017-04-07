@@ -11,6 +11,7 @@
 #
 
 import sys
+import pdb
 
 Outfile = sys.stdout
 HTMLfile = None
@@ -471,6 +472,7 @@ def EmplReviews (elist, totalreviews):
 # Who are the unknown hackers?
 #
 def IsUnknown(h):
+    # LG: need to take a look
     empl = h.employer[0][0][1].name
     return h.email[0] == empl or empl == '(Unknown)'
 

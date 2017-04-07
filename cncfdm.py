@@ -44,6 +44,8 @@ Aggregate = 'month'
 Numstat = 0
 ReportByFileType = 0
 ReportUnknowns = False
+InputData = sys.stdin
+InputDataIsFile = False
 
 #
 # Options:
@@ -65,14 +67,16 @@ ReportUnknowns = False
 # -w            Aggregrate the raw statistics by weeks instead of months
 # -y            Aggregrate the raw statistics by years instead of months
 # -z		Dump out the hacker database at completion
+# -i            Specify input file (instead of default sys.stdin)
 
 def ParseOpts ():
     global MapUnknown, DevReports
     global DateStats, AuthorSOBs, FileFilter, DumpDB
     global CFName, CSVFile, CSVPrefix,DirName, Aggregate, Numstat
     global ReportByFileType, ReportUnknowns
+    global InputData, InputDataIsFile
 
-    opts, rest = getopt.getopt (sys.argv[1:], 'b:dc:Dh:l:no:p:r:stUuwx:yz')
+    opts, rest = getopt.getopt (sys.argv[1:], 'i:b:dc:Dh:l:no:p:r:stUuwx:yz')
     for opt in opts:
         if opt[0] == '-b':
             DirName = opt[1]
@@ -112,20 +116,40 @@ def ParseOpts ():
             Aggregate = 'year'
         elif opt[0] == '-z':
             DumpDB = 1
-        
+        elif opt[0] == '-i':
+            try:
+                InputData = open(opt[1], 'r')
+                InputDataIsFile = True
+            except IOError:
+                print "Cannot open input file: " + opt[1] + "\n"
+                sys.exit(1)
 
+# LG: domains for which I cannot guess Employer
+unknowns = {
+    'gmail.com', 'hotmail.co.uk', '163.com', 'toph.ca', 'yandex.com'
+}
+unknown_domains = {}
+for unknown in unknowns:
+    unknown_domains[unknown] = []
 
 def LookupStoreHacker (name, email):
-    # pdb.set_trace() # LG: TODO: to see how hacker lookup looks like
     email = database.RemapEmail (email)
-    h = database.LookupEmail (email)
-    if h: # already there
-        return h
+    ha = database.LookupEmail (email)
+    if ha: # already there
+        return ha
     elist = database.LookupEmployer (email, MapUnknown)
-    h = database.LookupName (name)
-    if h: # new email
-        h.addemail (email, elist)
-        return h
+    ha = database.LookupName (name)
+    if email != 'unknown@hacker.net' and elist[0][1].name == '(Unknown)':
+        domain = email.split('@')[1].strip().lower()
+        if domain in unknown_domains:
+            print 'Adding unknown' + email
+            unknown_domains[domain].append(email)
+        else:
+            print 'Is this really Unknown: ' + email + '?'
+            pdb.set_trace()
+    if ha: # new email
+        ha.addemail (email, elist)
+        return ha
     return database.StoreHacker(name, elist, email)
 
 #
@@ -188,14 +212,27 @@ class patch:
         else:
             self.filetypes[filetype] = [added, removed]
 
+    def repr (self):
+        return ('Patch', self.commit, self.author.repr(), 'Email', self.email)
+
+ns = {'n': 0 }
+for key in patterns.keys():
+    ns[key] = 0
+
 def parse_numstat(line, file_filter):
+    global ns
     """
         Receive a line of text, determine if fits a numstat line and
         parse the added and removed lines as well as the file type.
     """
-    # pdb.set_trace() # LG: TODO: to see how numstat lines are parsed
     m = patterns['numstat'].match (line)
+    ns['n'] += 1
     if m:
+        if 'numstat' not in ns:
+            ns['numstat'] = 1
+        else:
+            ns['numstat'] += 1
+
         filename = m.group (3)
         # If we have a file filter, check for file lines.
         if file_filter and not file_filter.search (filename):
@@ -211,6 +248,10 @@ def parse_numstat(line, file_filter):
         m = patterns['rename'].match (filename)
         if m:
             filename = '%s%s%s' % (m.group (1), m.group (3), m.group (4))
+            if 'rename' not in ns:
+                ns['rename'] = 1
+            else:
+                ns['rename'] += 1
 
         filetype = database.FileTypes.guess_file_type (os.path.basename(filename))
         return filename, filetype, added, removed
@@ -222,14 +263,21 @@ def parse_numstat(line, file_filter):
 #
 # LG: need to add statictics here: how many times each pattern was matched
 # Then stats per releases (Kubernetes: 1.0 --> 1.6)
+matched = { 'n': 0 }
+for key in patterns.keys():
+    matched[key] = 0
+
 def grabpatch(logpatch):
-    # pdb.set_trace() # LG: TODO: to create statistic how many times each pattern was matched
+    global matched
+
+    matched['n'] += 1
     # just to exclude invalid patterns (not suited for non openstack repo - kubernetes)
     m = patterns['commit'].match (logpatch[0])
     if not m:
         return None
+    matched['commit'] += 1
 
-    p = patch(m.group (1))
+    pa = patch(m.group (1))
     ignore = (FileFilter is not None)
     for Line in logpatch[1:]:
         #
@@ -237,8 +285,13 @@ def grabpatch(logpatch):
         #
         m = patterns['author'].match (Line)
         if m:
-            p.email = database.RemapEmail (m.group (2))
-            p.author = LookupStoreHacker(m.group (1), p.email)
+            pa.email = database.RemapEmail (m.group (2))
+            pa.author = LookupStoreHacker(m.group (1), pa.email)
+            dkey = 'author'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         #
         # Could be a signed-off-by:
@@ -247,8 +300,13 @@ def grabpatch(logpatch):
         if m:
             email = database.RemapEmail (m.group (2))
             sobber = LookupStoreHacker(m.group (1), email)
-            if sobber != p.author or AuthorSOBs:
-                p.sobs.append ((email, LookupStoreHacker(m.group (1), m.group (2))))
+            if sobber != pa.author or AuthorSOBs:
+                pa.sobs.append ((email, LookupStoreHacker(m.group (1), m.group (2))))
+            dkey = 'signed-off-by'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         #
         # Various other tags of interest.
@@ -256,37 +314,62 @@ def grabpatch(logpatch):
         m = patterns['reviewed-by'].match (Line)
         if m:
             email = database.RemapEmail (m.group (2))
-            p.addreviewer (LookupStoreHacker(m.group (1), email))
+            pa.addreviewer (LookupStoreHacker(m.group (1), email))
+            dkey = 'reviewed-by'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         m = patterns['tested-by'].match (Line)
         if m:
             email = database.RemapEmail (m.group (2))
-            p.addtester (LookupStoreHacker (m.group (1), email))
-            p.author.testcredit (patch)
+            pa.addtester (LookupStoreHacker (m.group (1), email))
+            pa.author.testcredit (patch)
+            dkey = 'tested-by'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         # Reported-by:
         m = patterns['reported-by'].match (Line)
         if m:
             email = database.RemapEmail (m.group (2))
-            p.addreporter (LookupStoreHacker (m.group (1), email))
-            p.author.reportcredit (patch)
+            pa.addreporter (LookupStoreHacker (m.group (1), email))
+            pa.author.reportcredit (patch)
+            dkey = 'reported-by'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         # Reported-and-tested-by:
         m = patterns['reported-and-tested-by'].match (Line)
         if m:
             email = database.RemapEmail (m.group (2))
             h = LookupStoreHacker (m.group (1), email)
-            p.addreporter (h)
-            p.addtester (h)
-            p.author.reportcredit (patch)
-            p.author.testcredit (patch)
+            pa.addreporter (h)
+            pa.addtester (h)
+            pa.author.reportcredit (patch)
+            pa.author.testcredit (patch)
+            dkey = 'reported-and-tested-by'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         #
         # If this one is a merge, make note of the fact.
         #
         m = patterns['merge'].match (Line)
         if m:
-            p.merge = 1
+            pa.merge = 1
+            dkey = 'merge'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         #
         # See if it's the date.
@@ -294,10 +377,15 @@ def grabpatch(logpatch):
         m = patterns['date'].match (Line)
         if m:
             dt = rfc822.parsedate(m.group (2))
-            p.date = datetime.date (dt[0], dt[1], dt[2])
-            if p.date > Today:
-                sys.stderr.write ('Funky date: %s\n' % p.date)
-                p.date = Today
+            pa.date = datetime.date (dt[0], dt[1], dt[2])
+            if pa.date > Today:
+                sys.stderr.write ('Funky date: %s\n' % pa.date)
+                pa.date = Today
+            dkey = 'date'
+            if dkey not in matched:
+                matched[dkey] = 1
+            else:
+                matched[dkey] += 1
             continue
         if not Numstat:
             #
@@ -310,24 +398,33 @@ def grabpatch(logpatch):
             #
             if not ignore:
                 if patterns['add'].match (Line):
-                    p.added += 1
+                    pa.added += 1
+                    dkey = 'add'
+                    if dkey not in matched:
+                        matched[dkey] = 1
+                    else:
+                        matched[dkey] += 1
                     continue
                 if patterns['rem'].match (Line):
-                    p.removed += 1
+                    dkey = 'rem'
+                    if dkey not in matched:
+                        matched[dkey] = 1
+                    else:
+                        matched[dkey] += 1
+                    pa.removed += 1
         else:
             # Get the statistics (lines added/removes) using numstats
             # and without requiring a diff (--numstat instead -p)
-			(filename, filetype, added, removed) = parse_numstat (Line, FileFilter)
-			if filename:
-			    p.added += added
-			    p.removed += removed
-			    p.addfiletype (filetype, added, removed)
+            (filename, filetype, added, removed) = parse_numstat (Line, FileFilter)
+	    if filename:
+	        pa.added += added
+		pa.removed += removed
+		pa.addfiletype (filetype, added, removed)
 
-    if '@' in p.author.name:
-        # pdb.set_trace() # LG: TODO: to check what is this about?
-        GripeAboutAuthorName (p.author.name)
+    if '@' in pa.author.name:
+        GripeAboutAuthorName (pa.author.name)
 
-    return p
+    return pa
 
 def GripeAboutAuthorName (name):
     if name in GripedAuthorNames:
@@ -388,10 +485,9 @@ TotalChanged = TotalAdded = TotalRemoved = 0
 #
 # Snarf changesets.
 #
-# pdb.set_trace() # LG: to see data loaded from config
 print >> sys.stderr, 'Grabbing changesets...\r',
 
-patches = logparser.LogPatchSplitter(sys.stdin)
+patches = logparser.LogPatchSplitter(InputData)
 printcount = CSCount = 0
 
 for logpatch in patches:
@@ -407,58 +503,59 @@ for logpatch in patches:
     if is_svntag(logpatch):
         continue
 
+    pa = grabpatch(logpatch)
     # pdb.set_trace() # LG: TODO: to see difference between logpatch and `p`
-    p = grabpatch(logpatch)
-    if not p:
+    if not pa:
         break
-#    if p.added > 100000 or p.removed > 100000:
-#        print 'Skipping massive add', p.commit
+#    if pa.added > 100000 or pa.removed > 100000:
+#        print 'Skipping massive add', pa.commit
 #        continue
-    if FileFilter and p.added == 0 and p.removed == 0:
+    if FileFilter and pa.added == 0 and pa.removed == 0:
         continue
 
     #
     # skip over any k8s-bot
     #
     # LG: TODO: here we need to skip k8s bot(s)
-    #if p.email == "jenkins@openstack.org":
-    #    continue
+    if pa.email == 'k8s-merge-robot@users.noreply.github.com':
+        continue
 
     #
     # Record some global information - but only if this patch had
     # stuff which wasn't ignored.
     #
-    if ((p.added + p.removed) > 0 or not FileFilter) and not p.merge:
-        TotalAdded += p.added
-        TotalRemoved += p.removed
-        TotalChanged += max (p.added, p.removed)
-        AddDateLines (p.date, max (p.added, p.removed))
-        empl = p.author.emailemployer (p.email, p.date)
-        empl.AddCSet (p)
-        for sobemail, sobber in p.sobs:
-            empl = sobber.emailemployer (sobemail, p.date)
+    if ((pa.added + pa.removed) > 0 or not FileFilter) and not pa.merge:
+        TotalAdded += pa.added
+        TotalRemoved += pa.removed
+        TotalChanged += max (pa.added, pa.removed)
+        AddDateLines (pa.date, max (pa.added, pa.removed))
+        empl = pa.author.emailemployer (pa.email, pa.date)
+        empl.AddCSet (pa)
+        for sobemail, sobber in pa.sobs:
+            empl = sobber.emailemployer (sobemail, pa.date)
             empl.AddSOB()
 
     # pdb.set_trace() # LG: TODO:  to see SOBs, merge, reviews etc data
-    if not p.merge:
-        p.author.addpatch (p)
-        for sobemail, sob in p.sobs:
-            sob.addsob (p)
-        for hacker in p.reviews:
-            hacker.addreview (p)
-        for hacker in p.testers:
-            hacker.addtested (p)
-        for hacker in p.reports:
-            hacker.addreport (p)
+    if not pa.merge:
+        pa.author.addpatch (pa)
+        for sobemail, sob in pa.sobs:
+            sob.addsob (pa)
+        for hacker in pa.reviews:
+            hacker.addreview (pa)
+        for hacker in pa.testers:
+            hacker.addtested (pa)
+        for hacker in pa.reports:
+            hacker.addreport (pa)
         CSCount += 1
-    csvdump.AccumulatePatch (p, Aggregate)
-    csvdump.store_patch (p)
+    csvdump.AccumulatePatch (pa, Aggregate)
+    csvdump.store_patch (pa)
 print >> sys.stderr, 'Grabbing changesets...done       '
 
 if DumpDB:
     database.DumpDB ()
 database.MixVirtuals ()
 
+# See: database.Employers
 # pdb.set_trace() # LG: TODO: now let's see what we have in `database`
 # and figure out all stuff
 
@@ -499,3 +596,6 @@ reports.EmplReports (elist, TotalChanged, CSCount)
 
 if ReportByFileType and Numstat:
     reports.ReportByFileType (hlist)
+
+if InputDataIsFile:
+    InputData.close()

@@ -10,7 +10,7 @@
 # Public License, version 2.
 #
 import sys, datetime
-
+import pdb
 
 class Hacker:
     def __init__ (self, name, id, elist, email):
@@ -27,6 +27,9 @@ class Hacker:
         self.bugsfixed = [ ]
         self.testcred = self.repcred = 0
         self.versions = [ ]
+
+    def repr(self):
+        return ('Hacker', self.id, self.name, 'Email', self.email[0], 'Employers', len(self.employer))
 
     def addemail (self, email, elist):
         self.email.append (email)
@@ -149,6 +152,9 @@ class Employer:
         self.bugsfixed = [ ]
         self.reviews = [ ]
         self.hackers = [ ]
+
+    def repr(self):
+        return ('Employer', self.name, 'Hackers', len(self.hackers))
 
     def AddCSet (self, patch):
         self.added += patch.added
@@ -320,6 +326,8 @@ def MapToEmployer (email, unknown = 0):
 
 
 def LookupEmployer (email, mapunknown = 0):
+    #if email != 'unknown@hacker.net':
+    #    pdb.set_trace()
     elist = MapToEmployer (email, mapunknown)
     return elist # GetEmployer (ename)
 
