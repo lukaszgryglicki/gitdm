@@ -30,7 +30,7 @@ GripedAuthorNames = [ ]
 #
 # Control options.
 #
-MapUnknown = 0
+MapUnknown = 0  # 0=no map, 1=map to email domain name, 2=map to (Unknown)
 DevReports = 1
 DateStats = 0
 AuthorSOBs = 1
@@ -62,6 +62,7 @@ InputDataIsFile = False
 # -r pattern	Restrict to files matching pattern
 # -s		Ignore author SOB lines
 # -u		Map unknown employers to '(Unknown)'
+# -m		Map unknown employers to their email's domain name
 # -U 		Dump unknown hackers in report
 # -x file.csv   Export raw statistics as CSV
 # -w            Aggregrate the raw statistics by weeks instead of months
@@ -76,7 +77,7 @@ def ParseOpts ():
     global ReportByFileType, ReportUnknowns
     global InputData, InputDataIsFile
 
-    opts, rest = getopt.getopt (sys.argv[1:], 'i:b:dc:Dh:l:no:p:r:stUuwx:yz')
+    opts, rest = getopt.getopt (sys.argv[1:], 'i:b:dc:Dh:l:no:p:r:stUumwx:yz')
     for opt in opts:
         if opt[0] == '-b':
             DirName = opt[1]
@@ -103,8 +104,10 @@ def ParseOpts ():
             AuthorSOBs = 0
         elif opt[0] == '-t':
             ReportByFileType = 1
-        elif opt[0] == '-u':
+        elif opt[0] == '-m':
             MapUnknown = 1
+        elif opt[0] == '-u':
+            MapUnknown = 2
         elif opt[0] == '-U':
             ReportUnknowns = True
         elif opt[0] == '-x':
@@ -126,7 +129,8 @@ def ParseOpts ():
 
 # LG: domains for which I cannot guess Employer
 unknowns = {
-    'gmail.com', 'hotmail.co.uk', '163.com', 'toph.ca', 'yandex.com'
+    'gmail.com', 'hotmail.co.uk', 'toph.ca', 'yandex.com', 'moscar.net', 'bedafamily.com', 'ebay.com', 'hotmail.com', 'yahoo.com', 'qq.com', 'zju.edu.cn',
+    'outlook.com', 
 }
 unknown_domains = {}
 for unknown in unknowns:
@@ -142,15 +146,30 @@ def LookupStoreHacker (name, email):
     if email != 'unknown@hacker.net' and elist[0][1].name == '(Unknown)':
         domain = email.split('@')[1].strip().lower()
         if domain in unknown_domains:
-            print 'Adding unknown' + email
             unknown_domains[domain].append(email)
         else:
-            print 'Is this really Unknown: ' + email + '?'
-            pdb.set_trace()
+            unknown_domains[domain] = [email]
     if ha: # new email
         ha.addemail (email, elist)
         return ha
     return database.StoreHacker(name, elist, email)
+
+def DebugUnknowns():
+    n_hackers = len(database.HackersByName.values())
+    hdict = {}
+    for hacker in database.HackersByName.values():
+        hkey = hacker.employer[0][0][1].name
+        if hkey not in hdict:
+            hdict[hkey] = [hacker.email[0]]
+        else:
+            hdict[hkey].append(hacker.email[0])
+    srt_hackers = sorted(hdict.items(), key=lambda x: -len(x[1]))
+    top_hackers = map(lambda x: (x[0], len(x[1])), srt_hackers)
+    srt_unknown = sorted(unknown_domains.items(), key=lambda x: -len(x[1]))
+    top_unknown = map(lambda x: (x[0], len(x[1])), srt_unknown)
+    srt_adomains = sorted(database.ArtificialDomains.items(), key=lambda x: -len(x[1]))
+    top_adomains = map(lambda x: (x[0], len(x[1])), srt_adomains)
+    # pdb.set_trace()
 
 #
 # Date tracking.
@@ -558,6 +577,8 @@ database.MixVirtuals ()
 # See: database.Employers
 # pdb.set_trace() # LG: TODO: now let's see what we have in `database`
 # and figure out all stuff
+# LG: here to debug Unknown hackers (no employer is known for them)
+# DebugUnknowns()
 
 #
 # Say something

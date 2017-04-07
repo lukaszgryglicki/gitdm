@@ -299,9 +299,25 @@ def AddEmailEmployerMapping (email, employer, end = nextyear):
     except KeyError:
         EmailToEmployer[email] = [(end, empl)]
 
+# LG: Artificial Domains from Hacker's email domain names
+ArtificialDomains = {}
+def GetHackerDomain(dom, email):
+    new_dom = ''.join(map(lambda x: x.lower().capitalize(), dom.split('.')[:-1]))
+    new_dom += ' *'
+    key = (new_dom, dom)
+    if key not in ArtificialDomains:
+        ArtificialDomains[key] = [email]
+    else:
+        ArtificialDomains[key].append(email)
+    return new_dom
+
+# LG: unknown
+# 0: all Unknowns go to Employer with their name (so basically no aggregation)
+# 1: all unknowns go to Company name constructed from domain name: abc@gmail.com --> Gmail
+# 2: all Unknowns go to "(Unknown)" company
 def MapToEmployer (email, unknown = 0):
     # Somebody sometimes does s/@/ at /; let's fix it.
-    email = email.lower ().replace (' at ', '@')
+    email = email.strip().lower().replace(' at ', '@')
     try:
         return EmailToEmployer[email]
     except KeyError:
@@ -320,9 +336,14 @@ def MapToEmployer (email, unknown = 0):
     #
     # We don't know who they work for.
     #
-    if unknown:
+    if unknown == 0:
+        return [(nextyear, GetEmployer (email))]
+    elif unknown == 1:
+        return [(nextyear, GetEmployer (GetHackerDomain(addr, email)))]
+    elif unknown == 2:
         return [(nextyear, GetEmployer ('(Unknown)'))]
-    return [(nextyear, GetEmployer (email))]
+    else:
+        print "Unsupported unknown parameter handling value"
 
 
 def LookupEmployer (email, mapunknown = 0):
